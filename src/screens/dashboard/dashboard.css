@@ -1,0 +1,35 @@
+.slide-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+.slide-enter-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+.slide-exit {
+  transform: translateX(0);
+  opacity: 1;
+}
+.slide-exit-active {
+  transform: translateX(-100%);
+  opacity: 0;
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+.ticker {
+  overflow: hidden;
+  position: relative;
+}
+.ticker__move {
+  display: flex;
+  width: max-content;
+  animation: scroll 20s linear infinite;
+}
+@keyframes scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker:hover .ticker__move {
+  animation-play-state: paused;
+}
