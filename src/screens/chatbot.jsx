@@ -10,6 +10,7 @@ import { fetchWithAuth } from "./fetchHelper";
 const GROQ_API_KEY = "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";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
+// Simple spinner component
 const Spinner = ({ size = "md", className = "" }) => {
   const sizeClasses = {
     sm: "h-4 w-4",
@@ -49,6 +50,39 @@ const Avatar = ({ children, className = "" }) => (
   </div>
 );
 
+// Typing animation component
+const TypingAnimation = ({ fullText, speed = 20, onComplete }) => {
+  const [displayedText, setDisplayedText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  
+  useEffect(() => {
+    if (currentIndex < fullText.length) {
+      const timer = setTimeout(() => {
+        setDisplayedText(prev => prev + fullText[currentIndex]);
+        setCurrentIndex(prev => prev + 1);
+      }, speed);
+      
+      return () => clearTimeout(timer);
+    } else if (onComplete) {
+      onComplete();
+    }
+  }, [currentIndex, fullText, speed, onComplete]);
+  
+  // Split by newlines and render paragraphs
+  return (
+    <>
+      {displayedText.split('\n').map((line, i) => (
+        <p key={i} className={i > 0 ? 'mt-2' : ''}>
+          {line}
+          {i === displayedText.split('\n').length - 1 && currentIndex < fullText.length && (
+            <span className="animate-pulse">|</span>
+          )}
+        </p>
+      ))}
+    </>
+  );
+};
+
 export default function Chatbot() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -57,8 +91,10 @@ export default function Chatbot() {
   const [portfolioData, setPortfolioData] = useState(null);
   const [watchlistData, setWatchlistData] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [animatingMessageIndex, setAnimatingMessageIndex] = useState(null);
   const messagesEndRef = useRef(null);
 
+  // Fetch user's portfolio, watchlist, and profile data on mount
   useEffect(() => {
     async function fetchUserData() {
       try {
@@ -82,20 +118,27 @@ export default function Chatbot() {
         const profileResponse = await fetchWithAuth("/api/getProfile");
         setUserProfile(profileResponse || {});
         
-        // Add welcome message
-        setMessages([{
+        // Add welcome message - this will be animated
+        const welcomeMessage = {
           role: "assistant",
-          content: "Hello! I'm your StockSense AI advisor. I can help you with financial advice, stock analysis, and portfolio management. What would you like to know today?"
-        }]);
+          content: "Hello! I'm your StockSense AI advisor. I can help you with financial advice, stock analysis, and portfolio management. What would you like to know today?",
+          isAnimating: true
+        };
+        setMessages([welcomeMessage]);
+        setAnimatingMessageIndex(0);
+        
       } catch (err) {
         console.error("Error fetching user data:", err);
         setError("Failed to load your financial data. Some advisor features may be limited.");
         
         // Still add welcome message even if data fetch fails
-        setMessages([{
+        const welcomeMessage = {
           role: "assistant",
-          content: "Hello! I'm your StockSense AI advisor. I can help you with financial advice, stock analysis, and portfolio management. What would you like to know today?"
-        }]);
+          content: "Hello! I'm your StockSense AI advisor. I can help you with financial advice, stock analysis, and portfolio management. What would you like to know today?",
+          isAnimating: true
+        };
+        setMessages([welcomeMessage]);
+        setAnimatingMessageIndex(0);
       } finally {
         setIsLoading(false);
       }
@@ -107,11 +150,18 @@ export default function Chatbot() {
   // Auto-scroll to bottom of chat when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, animatingMessageIndex]);
+
+  const handleAnimationComplete = (index) => {
+    setMessages(prevMessages => prevMessages.map((msg, i) => 
+      i === index ? { ...msg, isAnimating: false } : msg
+    ));
+    setAnimatingMessageIndex(null);
+  };
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || animatingMessageIndex !== null) return;
     
     const userMessage = input.trim();
     setInput("");
@@ -129,17 +179,27 @@ export default function Chatbot() {
       // Call Groq API
       const response = await callGroqAPI(userMessage, portfolioSummary, watchlistSummary, userProfile);
       
-      // Add AI response to chat
-      setMessages(prev => [...prev, { role: "assistant", content: response }]);
+      // Add AI response to chat with animation flag
+      const newMessageIndex = messages.length + 1; // +1 for the user message we just added
+      setMessages(prev => [...prev, { 
+        role: "assistant", 
+        content: response,
+        isAnimating: true 
+      }]);
+      setAnimatingMessageIndex(newMessageIndex);
+      
     } catch (err) {
       console.error("Error calling AI:", err);
       setError("Sorry, I couldn't process your request. Please try again later.");
       
-      // Add a fallback message
+      // Add a fallback message with animation
+      const newMessageIndex = messages.length + 1;
       setMessages(prev => [...prev, { 
         role: "assistant", 
-        content: "I apologize, but I'm having trouble connecting to my financial analysis services right now. Please try again in a moment." 
+        content: "I apologize, but I'm having trouble connecting to my financial analysis services right now. Please try again in a moment.",
+        isAnimating: true
       }]);
+      setAnimatingMessageIndex(newMessageIndex);
     } finally {
       setIsLoading(false);
     }
@@ -269,11 +329,19 @@ Remember that you are a financial advisor for a stock trading platform. Maintain
                         : 'bg-gray-100 dark:bg-gray-800'
                     }`}
                   >
-                    {msg.content.split('\n').map((line, i) => (
-                      <p key={i} className={i > 0 ? 'mt-2' : ''}>
-                        {line}
-                      </p>
-                    ))}
+                    {msg.role === 'assistant' && msg.isAnimating ? (
+                      <TypingAnimation 
+                        fullText={msg.content} 
+                        speed={15}
+                        onComplete={() => handleAnimationComplete(index)}
+                      />
+                    ) : (
+                      msg.content.split('\n').map((line, i) => (
+                        <p key={i} className={i > 0 ? 'mt-2' : ''}>
+                          {line}
+                        </p>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -307,10 +375,13 @@ Remember that you are a financial advisor for a stock trading platform. Maintain
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask about your portfolio, stock recommendations, or market advice..."
-          disabled={isLoading}
+          disabled={isLoading || animatingMessageIndex !== null}
           className="flex-grow"
         />
-        <Button type="submit" disabled={isLoading || !input.trim()}>
+        <Button 
+          type="submit" 
+          disabled={isLoading || !input.trim() || animatingMessageIndex !== null}
+        >
           {isLoading ? <Spinner size="sm" /> : "Send"}
         </Button>
       </form>
